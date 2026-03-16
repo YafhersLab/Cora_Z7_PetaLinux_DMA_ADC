@@ -30,6 +30,19 @@ proc add_vhdl_recursive {dir} {
     }
 }
 add_vhdl_recursive ./src
+
+# add current Verilog files from src
+puts "Adding Verilog files from src/"
+proc add_verilog_recursive {dir} {
+    foreach f [glob -directory $dir *] {
+        if {[file isdirectory $f]} {
+            add_verilog_recursive $f
+        } elseif {[string match "*.v" $f] || [string match "*.sv" $f]} {
+            add_files $f
+        }
+    }
+}
+add_verilog_recursive ./src
 update_compile_order -fileset sources_1
 
 # remove existing VHDL testbench files from sim_1
