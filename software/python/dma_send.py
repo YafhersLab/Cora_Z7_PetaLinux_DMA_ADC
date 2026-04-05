@@ -2,6 +2,7 @@
 
 import os
 import mmap
+import time
 import socket
 import argparse
 
@@ -13,12 +14,26 @@ PORT                = 5001              # TCP port on which the destination PC i
 
 # DMA Buffer Address
 DDR_SRC_ADDR        = 0x1ff00000        # Physical start address of the DMA buffer in DDR
-DMA_TRANSFER_SIZE   = 4 * 1024          # DMA transfer size in bytes
+DMA_TRANSFER_SIZE   = 16 * 1024          # DMA transfer size in bytes
 
 # TCP Transmission
-TCP_CHUNK_SIZE      = 4 * 1024          # Size of each TCP chunk sent to the server
+TCP_CHUNK_SIZE      = 16 * 1024          # Size of each TCP chunk sent to the server
+
+# Synchronization
+DMA_READY_TIMEOUT   = 15.0              # Maximum seconds to wait for the DMA flag
 
 #%% Functions
+
+# Waits until dma_capture.py signals that the DMA transfer is complete
+def wait_for_dma_ready(path, timeout):
+    print("Waiting for DMA transfer to complete...")
+    t_start = time.time()
+    while not os.path.exists(path):
+        if time.time() - t_start > timeout:
+            raise TimeoutError("Timed out waiting for DMA ready flag")
+        time.sleep(0.05)
+    os.remove(path)
+    print("DMA ready flag received. Reading DDR buffer...")
 
 # Opens the DMA buffer from /dev/mem as a read-only memory map
 def open_dma_buffer(size, offset):
@@ -52,10 +67,13 @@ dma_mem = None
 try:
     # Configuration of argparse
     parser = argparse.ArgumentParser(description="Read DMA buffer from DDR and send it over TCP")
-    parser.add_argument('--ddr_src_addr', type=lambda x: int(x, 0),  default=DDR_SRC_ADDR,  help="Physical DDR address to read from (e.g. 0x1ff00000)")
-    parser.add_argument('--host',         type=str,                  default=HOST,          help="IP address of the destination TCP server")
-    parser.add_argument('--port',         type=int,                  default=PORT,          help="TCP port of the destination server")
+    parser.add_argument('--ddr_src_addr', type=lambda x: int(x, 0),default=DDR_SRC_ADDR,  help="Physical DDR address to read from (e.g. 0x1ff00000)")
+    parser.add_argument('--host',         type=str,                 default=HOST,          help="IP address of the destination TCP server")
+    parser.add_argument('--port',         type=int,                 default=PORT,          help="TCP port of the destination server")
     args = parser.parse_args()
+
+    # Wait until dma_capture.py confirms the DMA transfer is done
+    wait_for_dma_ready("/tmp/dma_ready", DMA_READY_TIMEOUT)
 
     # Open the DDR memory region where the DMA stored the captured data
     dma_mem = open_dma_buffer(DMA_TRANSFER_SIZE, args.ddr_src_addr)
@@ -68,15 +86,14 @@ try:
     send_buffer(sock, dma_mem, DMA_TRANSFER_SIZE, TCP_CHUNK_SIZE)
     print(f"Buffer sent successfully ({DMA_TRANSFER_SIZE} bytes).")
 
+except TimeoutError as e:
+    print(f"Synchronization error: {e}")
 except FileNotFoundError as e:
     print(f"Device error: {e}")
-
 except ConnectionRefusedError:
-    print(f"Connection refused: could not reach {HOST}:{PORT}")
-
+    print(f"Connection refused: could not reach {args.host}:{args.port}")
 except KeyboardInterrupt:
     print("\nInterrupted by user. Closing connection...")
-
 except Exception as e:
     print(f"Unexpected error: {e}")
 

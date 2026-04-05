@@ -13,11 +13,11 @@ HOST                = "0.0.0.0"        # Listen on all network interfaces
 PORT                = 5001             # TCP port to receive data
 
 # Reception
-TCP_CHUNK_SIZE      = 4 * 1024         # Size of each received TCP chunk in bytes
+TCP_CHUNK_SIZE      = 16 * 1024         # Size of each received TCP chunk in bytes
 
 # Data Interpretation
-SAMPLES_TO_PRINT    = 2000             # Number of samples to print to console
-SAMPLES_TO_PLOT     = 500              # Number of samples to plot
+SAMPLES_TO_PRINT    = 512             # Number of samples to print to console
+SAMPLES_TO_PLOT     = 512             # Number of samples to plot
 
 #%% Functions
 
@@ -61,6 +61,10 @@ def extract_lower_16bits_signed(values):
     lower_values = np.array([v & 0xFFFF for v in values], dtype=np.uint16)
     return lower_values.astype(np.int16).tolist()
 
+def extract_32bits_signed(values):
+    arr = np.array(values, dtype=np.uint32)
+    return arr.astype(np.int32).tolist()
+
 # Plots ADC samples as a time-domain waveform
 def plot_data(values, step=1):
     plt.figure(figsize=(12, 4))
@@ -96,7 +100,9 @@ try:
         values32 = interpret_as_32bits(data)
 
         # Extract lower 16 bits as signed ADC samples
+        
         values16_signed = extract_lower_16bits_signed(values32)
+        #values16_signed = extract_32bits_signed(values32)
 
         # Print first N samples to console
         print(f"\nFirst {args.samples_print} ADC samples (16-bit signed):")
